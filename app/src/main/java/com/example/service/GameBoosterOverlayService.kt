@@ -139,6 +139,10 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
     private var composeView: ComposeView? = null
     private var isPanelExpanded = mutableStateOf(false)
 
+    // Coordenadas en pantalla de la burbuja flotante
+    private var bubbleX: Int = 0
+    private var bubbleY: Int = 300
+
     private val serviceJob = Job()
     private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
     private var gameWatcherJob: Job? = null
@@ -163,6 +167,10 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
         scriptManager = ScriptManager(applicationContext)
         resolutionManager = ResolutionManager(applicationContext, scriptManager)
         gameRenderManager = GameRenderManager(applicationContext, scriptManager)
+
+        val metrics = resources.displayMetrics
+        bubbleX = 0
+        bubbleY = (metrics.heightPixels * 0.30f).toInt()
 
         createNotificationChannel()
     }
@@ -228,12 +236,34 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
     }
 
     /**
-     * Muestra la burbuja flotante y el contenedor Compose en el WindowManager.
+     * Parámetros de la ventana cuando solo se muestra la burbuja.
+     * Al usar WRAP_CONTENT y FLAG_NOT_FOCUSABLE, la ventana ocupa ÚNICAMENTE los píxeles
+     * de la burbuja, permitiendo que el 100% de la superficie del juego reciba toques sin impedimentos.
      */
-    private fun showFloatingOverlay() {
-        if (composeView != null) return
+    private fun getBubbleLayoutParams(): WindowManager.LayoutParams {
+        return WindowManager.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else
+                @Suppress("DEPRECATION")
+                WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = bubbleX
+            y = bubbleY
+        }
+    }
 
-        val layoutParams = WindowManager.LayoutParams(
+    /**
+     * Parámetros de la ventana cuando se expande el panel Red Magic a pantalla completa.
+     */
+    private fun getPanelLayoutParams(): WindowManager.LayoutParams {
+        return WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
@@ -246,7 +276,69 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
+            x = 0
+            y = 0
         }
+    }
+
+    /**
+     * Actualiza la posición de la burbuja en tiempo real al arrastrarla por la pantalla.
+     */
+    private fun updateBubblePosition(dx: Float, dy: Float) {
+        val view = composeView ?: return
+        if (isPanelExpanded.value) return
+
+        val metrics = resources.displayMetrics
+        val maxX = (metrics.widthPixels - 140).coerceAtLeast(0)
+        val maxY = (metrics.heightPixels - 140).coerceAtLeast(0)
+
+        bubbleX = (bubbleX + dx.toInt()).coerceIn(0, maxX)
+        bubbleY = (bubbleY + dy.toInt()).coerceIn(40, maxY)
+
+        val params = getBubbleLayoutParams()
+        try {
+            windowManager.updateViewLayout(view, params)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error actualizando posición de burbuja: ${e.message}")
+        }
+    }
+
+    /**
+     * Expande la ventana a pantalla completa para mostrar el panel Red Magic.
+     */
+    private fun expandPanel() {
+        val view = composeView ?: return
+        isPanelExpanded.value = true
+        val params = getPanelLayoutParams()
+        try {
+            windowManager.updateViewLayout(view, params)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error expandiendo panel: ${e.message}")
+        }
+    }
+
+    /**
+     * Colapsa la ventana al tamaño exclusivo de la burbuja (WRAP_CONTENT)
+     * devolviendo inmediatamente todos los toques de pantalla al juego.
+     */
+    private fun collapsePanel() {
+        val view = composeView ?: return
+        isPanelExpanded.value = false
+        val params = getBubbleLayoutParams()
+        try {
+            windowManager.updateViewLayout(view, params)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error colapsando panel a burbuja: ${e.message}")
+        }
+    }
+
+    /**
+     * Muestra la burbuja flotante en el WindowManager.
+     */
+    private fun showFloatingOverlay() {
+        if (composeView != null) return
+
+        val layoutParams = getBubbleLayoutParams()
 
         composeView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@GameBoosterOverlayService)
@@ -256,111 +348,108 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
             setContent {
                 val resolutionState by resolutionManager.state.collectAsState()
                 val renderState by gameRenderManager.state.collectAsState()
-                var isExpanded by remember { isPanelExpanded }
+                val isExpanded by isPanelExpanded
 
-                Box(modifier = Modifier.fillMaxSize()) {
-                    // Burbuja deslizante (visible cuando el panel está cerrado)
-                    if (!isExpanded) {
-                        FloatingDraggableBubble(
-                            onClick = {
-                                isExpanded = true
-                                updateWindowFocusable(true)
-                            },
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .padding(start = 4.dp)
-                        )
-                    }
-
-                    // Panel lateral estilo Red Magic (visible cuando está expandido)
-                    AnimatedVisibility(
-                        visible = isExpanded,
-                        enter = fadeIn() + slideInHorizontally(initialOffsetX = { it }),
-                        exit = fadeOut() + slideOutHorizontally(targetOffsetX = { it })
-                    ) {
-                        RedMagicPanelContent(
-                            resolutionState = resolutionState,
-                            renderState = renderState,
-                            targetGamePackage = _activeGamePackage.value,
-                            onApplyResolution = { w, h, dpi ->
-                                serviceScope.launch {
-                                    resolutionManager.applyResolution(w, h, dpi)
-                                }
-                            },
-                            onResetResolution = {
-                                serviceScope.launch {
-                                    resolutionManager.resetResolution()
-                                }
-                            },
-                            onToggleAutoDpi = { enabled ->
-                                resolutionManager.toggleAutoCalculateDpi(enabled)
-                            },
-                            onRenderScaleChange = { scale ->
-                                val pkg = _activeGamePackage.value
-                                if (!pkg.isNullOrBlank()) {
-                                    serviceScope.launch {
-                                        gameRenderManager.applyRenderScale(pkg, scale)
-                                    }
-                                }
-                            },
-                            onToggleMsaa = { disable ->
-                                serviceScope.launch {
-                                    gameRenderManager.toggleDisableMsaa(disable)
-                                }
-                            },
-                            onResetGraphics = {
-                                serviceScope.launch {
-                                    gameRenderManager.resetAll(_activeGamePackage.value)
-                                }
-                            },
-                            onClosePanel = {
-                                isExpanded = false
-                                updateWindowFocusable(false)
+                if (!isExpanded) {
+                    // Muestra ÚNICAMENTE la burbuja flotante compacta.
+                    // No hay vistas que cubran el resto de la pantalla, el juego responde normalmente.
+                    FloatingDraggableBubble(
+                        onClick = { expandPanel() },
+                        onDrag = { dx, dy -> updateBubblePosition(dx, dy) }
+                    )
+                } else {
+                    // Al expandirse, ocupa la pantalla para mostrar el panel táctico Red Magic
+                    RedMagicPanelContent(
+                        resolutionState = resolutionState,
+                        renderState = renderState,
+                        targetGamePackage = _activeGamePackage.value,
+                        onApplyResolution = { w, h, dpi ->
+                            serviceScope.launch {
+                                resolutionManager.applyResolution(w, h, dpi)
                             }
-                        )
-                    }
+                        },
+                        onResetResolution = {
+                            serviceScope.launch {
+                                resolutionManager.resetResolution()
+                            }
+                        },
+                        onToggleAutoDpi = { enabled ->
+                            resolutionManager.toggleAutoCalculateDpi(enabled)
+                        },
+                        onRenderScaleChange = { scale ->
+                            val pkg = _activeGamePackage.value
+                            if (!pkg.isNullOrBlank()) {
+                                serviceScope.launch {
+                                    gameRenderManager.applyRenderScale(pkg, scale)
+                                }
+                            }
+                        },
+                        onToggleMsaa = { disable ->
+                            serviceScope.launch {
+                                gameRenderManager.toggleDisableMsaa(disable)
+                            }
+                        },
+                        onResetGraphics = {
+                            serviceScope.launch {
+                                gameRenderManager.resetAll(_activeGamePackage.value)
+                            }
+                        },
+                        onClosePanel = {
+                            collapsePanel()
+                        }
+                    )
                 }
             }
         }
 
-        windowManager.addView(composeView, layoutParams)
-    }
-
-    /**
-     * Actualiza las banderas de foco del WindowManager según si el panel está desplegado.
-     */
-    private fun updateWindowFocusable(focusable: Boolean) {
-        val view = composeView ?: return
-        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
-        if (focusable) {
-            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-        } else {
-            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        try {
+            windowManager.addView(composeView, layoutParams)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error agregando vista flotante: ${e.message}", e)
         }
-        windowManager.updateViewLayout(view, params)
     }
 
     /**
      * Vigila en segundo plano si el usuario sale del juego.
-     * Si el juego deja de estar en primer plano, restaura automáticamente la resolución nativa.
+     * Si el juego deja de estar en primer plano, restaura automáticamente la resolución nativa y el render scale
+     * para evitar que el teléfono quede con una resolución extraña o no nativa.
      */
     private fun startGameWatcher(gamePackage: String) {
         gameWatcherJob?.cancel()
         gameWatcherJob = serviceScope.launch(Dispatchers.IO) {
+            var consecutiveNonGameTicks = 0
             while (isActive) {
-                delay(3500) // Comprueba cada 3.5 segundos de manera eficiente
+                delay(2500) // Verificación balanceada cada 2.5 segundos
 
-                // Si la resolución o el render scale fueron modificados, verificamos si seguimos en el juego
-                if (resolutionManager.state.value.isCustomResolutionActive || gameRenderManager.state.value.isDownscaleActive) {
+                try {
                     val foregroundCheck = scriptManager.executeScript("get_foreground_app.sh")
                     val currentAppOutput = foregroundCheck.stdout
 
-                    // Si la aplicación en primer plano ya no contiene el paquete del juego
-                    if (currentAppOutput.isNotBlank() && !currentAppOutput.contains(gamePackage, ignoreCase = true)) {
-                        Log.i(TAG, "El usuario salió del juego $gamePackage. Restaurando resolución nativa y render scale automáticamente.")
-                        resolutionManager.resetResolution()
-                        gameRenderManager.resetAll(gamePackage)
+                    if (currentAppOutput.isNotBlank()) {
+                        val isGameInForeground = currentAppOutput.contains(gamePackage, ignoreCase = true)
+                        val isOurAppInForeground = currentAppOutput.contains(packageName, ignoreCase = true)
+
+                        if (!isGameInForeground && !isOurAppInForeground) {
+                            consecutiveNonGameTicks++
+                            Log.d(TAG, "App fuera de juego: '$currentAppOutput' (Ticks: $consecutiveNonGameTicks)")
+
+                            // Tras 2 comprobaciones seguidas fuera del juego (~5 segundos), restaurar por seguridad
+                            if (consecutiveNonGameTicks >= 2) {
+                                val isCustomRes = resolutionManager.state.value.isCustomResolutionActive
+                                val isDownscale = gameRenderManager.state.value.isDownscaleActive
+
+                                if (isCustomRes || isDownscale) {
+                                    Log.i(TAG, "Salida de juego $gamePackage confirmada. Restaurando resolución nativa y render scale.")
+                                    resolutionManager.resetResolution()
+                                    gameRenderManager.resetAll(gamePackage)
+                                }
+                            }
+                        } else {
+                            consecutiveNonGameTicks = 0
+                        }
                     }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Error en watcher de aplicación: ${e.message}")
                 }
             }
         }
@@ -369,25 +458,32 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
     override fun onDestroy() {
         super.onDestroy()
         _isRunning.value = false
+        val gamePkg = _activeGamePackage.value
         _activeGamePackage.value = null
 
+        gameWatcherJob?.cancel()
+
         // SEGURIDAD CRÍTICA: Restaurar resolución nativa y render scale al destruir el servicio
-        serviceScope.launch(Dispatchers.IO) {
+        // Usamos NonCancellable para que la corrutina no sea cancelada al destruir el scope
+        serviceScope.launch(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
             try {
                 resolutionManager.resetResolution()
-                gameRenderManager.resetAll(_activeGamePackage.value)
+                gameRenderManager.resetAll(gamePkg)
             } catch (e: Exception) {
                 Log.e(TAG, "Error restaurando ajustes al salir: ${e.message}")
             }
         }
 
-        gameWatcherJob?.cancel()
-        serviceJob.cancel()
-
         if (composeView != null) {
-            windowManager.removeView(composeView)
+            try {
+                windowManager.removeView(composeView)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error removiendo vista de ventana: ${e.message}")
+            }
             composeView = null
         }
+
+        serviceJob.cancel()
 
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
@@ -399,34 +495,47 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
 }
 
 /**
- * Burbuja deslizante flotante minimalista estilo Game Space.
+ * Burbuja deslizante flotante minimalista estilo Red Magic Game Space.
+ * Soporta arrastre en pantalla (onDrag) y pulsación (onClick) sin bloquear el juego circundante.
  */
 @Composable
 fun FloatingDraggableBubble(
     onClick: () -> Unit,
+    onDrag: (Float, Float) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var offsetX by remember { mutableStateOf(0f) }
-    var offsetY by remember { mutableStateOf(0f) }
-
     Box(
         modifier = modifier
             .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    offsetX += dragAmount.x
-                    offsetY += dragAmount.y
-                }
+                var totalDragDistance = 0f
+                detectDragGestures(
+                    onDragStart = {
+                        totalDragDistance = 0f
+                    },
+                    onDragEnd = {
+                        // Si el desplazamiento total fue mínimo, se interpreta como un tap (click)
+                        if (totalDragDistance < 15f) {
+                            onClick()
+                        }
+                    },
+                    onDragCancel = {
+                        totalDragDistance = 0f
+                    },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        totalDragDistance += kotlin.math.abs(dragAmount.x) + kotlin.math.abs(dragAmount.y)
+                        onDrag(dragAmount.x, dragAmount.y)
+                    }
+                )
             }
             .clip(RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp))
-            .background(Color(0xE60F172A))
+            .background(Color(0xF00B0F19))
             .border(
                 width = 1.5.dp,
-                color = RmAccentRed.copy(alpha = 0.8f),
+                color = RmAccentRed.copy(alpha = 0.85f),
                 shape = RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp)
             )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 12.dp)
+            .padding(horizontal = 10.dp, vertical = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
@@ -439,8 +548,9 @@ fun FloatingDraggableBubble(
             Text(
                 text = "BOOST",
                 color = Color.White,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Black
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 0.5.sp
             )
         }
     }

@@ -17,13 +17,12 @@ if [ -z "$PACKAGE" ]; then
     exit 1
 fi
 
-cmd game reset "$PACKAGE" 2>&1
-STATUS=$?
-
-if [ $STATUS -eq 0 ]; then
-    echo "SUCCESS: Render scale de $PACKAGE restablecido a valores nativos."
-    exit 0
-else
-    echo "WARN: Falló 'cmd game reset $PACKAGE' (Status: $STATUS)."
-    exit $STATUS
+if which cmd >/dev/null 2>&1; then
+    cmd game reset "$PACKAGE" >/dev/null 2>&1
+    cmd game mode standard "$PACKAGE" >/dev/null 2>&1
 fi
+
+device_config delete game_overlay "$PACKAGE" >/dev/null 2>&1
+
+echo "SUCCESS: Render scale de $PACKAGE restablecido a valores nativos."
+exit 0

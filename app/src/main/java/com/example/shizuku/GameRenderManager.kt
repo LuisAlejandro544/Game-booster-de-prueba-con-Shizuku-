@@ -67,11 +67,24 @@ class GameRenderManager(
             )
         }
 
-        val result = if (clampedScale >= 0.98f) {
+        var result = if (clampedScale >= 0.98f) {
             // Si la escala vuelve al 100%, restauramos mediante cmd game reset
             scriptManager.executeScript("reset_game_render_scale.sh", listOf(packageName))
         } else {
             scriptManager.executeScript("apply_game_render_scale.sh", listOf(formattedScale, packageName))
+        }
+
+        // Fallback directo con cmd game o device_config
+        if (!result.isSuccess) {
+            val fallbackCmd = if (clampedScale >= 0.98f) {
+                "cmd game reset $packageName || device_config delete game_overlay $packageName"
+            } else {
+                "cmd game mode performance $packageName ; cmd game set --downscale $formattedScale $packageName ; device_config put game_overlay $packageName \"mode=2,downscaleFactor=$formattedScale\""
+            }
+            val fallbackResult = scriptManager.executeCommand(fallbackCmd)
+            if (fallbackResult.isSuccess) {
+                result = fallbackResult
+            }
         }
 
         val success = result.isSuccess

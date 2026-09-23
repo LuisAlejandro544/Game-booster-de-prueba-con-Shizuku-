@@ -27,13 +27,15 @@ if [ -z "$WIDTH" ] || [ -z "$HEIGHT" ]; then
     exit 1
 fi
 
-# Guardar la resolución nativa actual si no existe backup previo
+# Guardar la resolución nativa actual si no existe backup previo (usando sed y grep para compatibilidad universal)
 if [ ! -f "$BACKUP_FILE" ]; then
-    ORIG_SIZE=$(wm size | head -n 1 | awk '{print $NF}')
-    ORIG_DENSITY=$(wm density | head -n 1 | awk '{print $NF}')
-    echo "ORIG_SIZE=$ORIG_SIZE" > "$BACKUP_FILE"
-    echo "ORIG_DENSITY=$ORIG_DENSITY" >> "$BACKUP_FILE"
-    echo "INFO: Backup de pantalla creado: Tamaño=$ORIG_SIZE, Densidad=$ORIG_DENSITY"
+    ORIG_SIZE=$(wm size 2>/dev/null | grep -i "Physical size" | head -n 1 | sed 's/.*: //')
+    ORIG_DENSITY=$(wm density 2>/dev/null | grep -i "Physical density" | head -n 1 | sed 's/.*: //')
+    if [ -n "$ORIG_SIZE" ]; then
+        echo "ORIG_SIZE=$ORIG_SIZE" > "$BACKUP_FILE"
+        echo "ORIG_DENSITY=$ORIG_DENSITY" >> "$BACKUP_FILE"
+        echo "INFO: Backup de pantalla creado: Tamaño=$ORIG_SIZE, Densidad=$ORIG_DENSITY"
+    fi
 fi
 
 # Aplicar el cambio de resolución de pantalla

@@ -146,10 +146,24 @@ class ResolutionManager(
     suspend fun applyResolution(width: Int, height: Int, dpi: Int): Boolean = withContext(Dispatchers.IO) {
         _state.update { it.copy(isOperating = true, statusMessage = "Aplicando resolución...") }
 
-        val result = scriptManager.executeScript(
+        var result = scriptManager.executeScript(
             scriptName = "apply_resolution.sh",
             args = listOf(width.toString(), height.toString(), dpi.toString())
         )
+
+        // Fallback directo con comando nativo wm si el script devolvió código no exitoso
+        if (!result.isSuccess) {
+            Log.w(TAG, "Script apply_resolution.sh retornó ${result.exitCode}, aplicando comandos wm directos...")
+            val directCmd = if (dpi > 0) {
+                "wm size ${width}x${height} && wm density $dpi"
+            } else {
+                "wm size ${width}x${height}"
+            }
+            val fallbackResult = scriptManager.executeCommand(directCmd)
+            if (fallbackResult.isSuccess) {
+                result = fallbackResult
+            }
+        }
 
         val success = result.isSuccess
         val newSettings = if (success) DisplaySettings(width, height, dpi) else _state.value.currentSettings
@@ -159,6 +173,9 @@ class ResolutionManager(
                 isOperating = false,
                 isCustomResolutionActive = success,
                 currentSettings = newSettings,
+                targetWidth = width,
+                targetHeight = height,
+                targetDpi = dpi,
                 statusMessage = if (success) {
                     "Resolución aplicada: ${width}x${height} @ ${dpi} DPI"
                 } else {
@@ -176,10 +193,19 @@ class ResolutionManager(
     suspend fun resetResolution(): Boolean = withContext(Dispatchers.IO) {
         _state.update { it.copy(isOperating = true, statusMessage = "Restaurando resolución nativa...") }
 
-        val result = scriptManager.executeScript(
+        var result = scriptManager.executeScript(
             scriptName = "reset_resolution.sh",
             args = emptyList()
         )
+
+        // Fallback directo a reset de wm
+        if (!result.isSuccess) {
+            Log.w(TAG, "Script reset_resolution.sh retornó ${result.exitCode}, ejecutando reset wm directo...")
+            val fallbackResult = scriptManager.executeCommand("wm size reset && wm density reset")
+            if (fallbackResult.isSuccess) {
+                result = fallbackResult
+            }
+        }
 
         val success = result.isSuccess
         val native = _state.value.nativeSettings
