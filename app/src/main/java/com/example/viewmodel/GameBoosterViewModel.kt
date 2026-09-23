@@ -15,6 +15,9 @@ import com.example.service.GameBoosterOverlayService
 import com.example.shizuku.DisplayResolutionState
 import com.example.shizuku.GameRenderManager
 import com.example.shizuku.GameRenderState
+import com.example.shizuku.GraphicsDriver
+import com.example.shizuku.GraphicsDriverManager
+import com.example.shizuku.GraphicsDriverState
 import com.example.shizuku.ResolutionManager
 import com.example.shizuku.ScriptManager
 import com.example.shizuku.ShizukuManager
@@ -69,7 +72,9 @@ data class BoosterUiState(
     val isAddingExceptionDialogVisible: Boolean = false,
     val isScanningApps: Boolean = false,
     val scannedApps: List<InstalledApp> = emptyList(),
-    val gamesList: List<GameItem> = emptyList()
+    val gamesList: List<GameItem> = emptyList(),
+    val isLaunchDialogVisible: Boolean = false,
+    val pendingLaunchGame: GameItem? = null
 )
 
 /**
@@ -77,8 +82,9 @@ data class BoosterUiState(
  *
  * Centraliza la lógica de negocio, coordina Shizuku, gestiona scripts .sh,
  * controla el cálculo y aplicación de resolución/DPI, administra el servicio
- * de la burbuja y panel flotante estilo Red Magic, y gestiona el bloqueo de
- * notificaciones con excepciones para evitar interrupciones durante el juego.
+ * de la burbuja y panel flotante estilo Red Magic, gestiona el bloqueo de
+ * notificaciones, la compilación AOT previa contra micro-stuttering, la liberación
+ * quirúrgica de memoria y el modo Wi-Fi de ultrabaja latencia.
  */
 class GameBoosterViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -86,6 +92,10 @@ class GameBoosterViewModel(application: Application) : AndroidViewModel(applicat
     val scriptManager = ScriptManager(application.applicationContext)
     val resolutionManager = ResolutionManager(application.applicationContext, scriptManager)
     val gameRenderManager = GameRenderManager(application.applicationContext, scriptManager)
+    val graphicsDriverManager = GraphicsDriverManager(application.applicationContext, scriptManager)
+    val aotCompilationManager = com.example.shizuku.AotCompilationManager(application.applicationContext, scriptManager)
+    val memoryTrimManager = com.example.shizuku.MemoryTrimManager(application.applicationContext, scriptManager)
+    val wifiLowLatencyManager = com.example.service.WifiLowLatencyManager.getInstance(application.applicationContext)
     val appScanner = AppScanner(application.applicationContext)
     val gameStorage = GameStorage(application.applicationContext)
     val notificationBlockerManager = com.example.data.NotificationBlockerManager.getInstance(application.applicationContext)
@@ -93,6 +103,11 @@ class GameBoosterViewModel(application: Application) : AndroidViewModel(applicat
     val shizukuState: StateFlow<ShizukuState> = shizukuManager.state
     val resolutionState: StateFlow<DisplayResolutionState> = resolutionManager.state
     val gameRenderState: StateFlow<GameRenderState> = gameRenderManager.state
+    val graphicsDriverState: StateFlow<GraphicsDriverState> = graphicsDriverManager.state
+    val aotState: StateFlow<com.example.shizuku.AotCompilerState> = aotCompilationManager.state
+    val memoryTrimState: StateFlow<com.example.shizuku.MemoryTrimState> = memoryTrimManager.state
+    val isWifiLowLatencyActive: StateFlow<Boolean> = wifiLowLatencyManager.isLowLatencyActive
+    val isWifiLowLatencyEnabledByUser: StateFlow<Boolean> = wifiLowLatencyManager.isEnabledByUser
     val notificationConfig = notificationBlockerManager.config
     val blockedNotifications = notificationBlockerManager.blockedHistory
     val isNotificationListenerConnected = com.example.service.GameBoosterNotificationListener.isListenerConnected
@@ -171,6 +186,9 @@ class GameBoosterViewModel(application: Application) : AndroidViewModel(applicat
             return
         }
 
+        // Cierra el diálogo de selección si estuviera abierto
+        dismissLaunchDialog()
+
         // Inicia el servicio en primer plano con la burbuja flotante
         GameBoosterOverlayService.start(context, game.packageName, game.name)
 
@@ -189,6 +207,81 @@ class GameBoosterViewModel(application: Application) : AndroidViewModel(applicat
             _uiState.update {
                 it.copy(notificationMessage = "Burbuja activada. Abriendo overlay de control.")
             }
+        }
+    }
+
+    /**
+     * Abre el diálogo selector de tipo de ejecución (Normal vs Compilación Previa AOT).
+     */
+    fun openLaunchDialog(game: GameItem) {
+        _uiState.update {
+            it.copy(
+                isLaunchDialogVisible = true,
+                pendingLaunchGame = game
+            )
+        }
+    }
+
+    /**
+     * Cierra el diálogo selector de lanzamiento.
+     */
+    fun dismissLaunchDialog() {
+        _uiState.update {
+            it.copy(
+                isLaunchDialogVisible = false,
+                pendingLaunchGame = null
+            )
+        }
+        aotCompilationManager.resetState()
+    }
+
+    /**
+     * Ejecuta la compilación previa AOT y posteriormente inicia el juego.
+     */
+    fun launchGameWithAot(context: Context, game: GameItem) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update {
+                it.copy(notificationMessage = "Compilando dex2oat para ${game.name} contra micro-stuttering...")
+            }
+            val result = aotCompilationManager.compileGame(game.packageName)
+            // Una vez finalizada la compilación, se abre el juego en el hilo principal
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+                launchGameWithOverlay(context, game)
+            }
+        }
+    }
+
+    /**
+     * Ejecuta la liberación quirúrgica de memoria en segundo plano mediante 'cmd activity trim-memory'.
+     */
+    fun performMemoryTrim() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = memoryTrimManager.trimBackgroundMemory()
+            _uiState.update {
+                it.copy(
+                    notificationMessage = if (result.isSuccess) {
+                        "¡Memoria RAM liberada quirúrgicamente! Apps secundarias purgadas."
+                    } else {
+                        "Liberación completada con advertencias: ${result.stderr.take(50)}"
+                    }
+                )
+            }
+        }
+    }
+
+    /**
+     * Activa o desactiva la preferencia del Modo Wi-Fi de Ultrabaja Latencia.
+     */
+    fun toggleWifiLowLatency(enabled: Boolean) {
+        wifiLowLatencyManager.setEnabledByUser(enabled)
+        _uiState.update {
+            it.copy(
+                notificationMessage = if (enabled) {
+                    "Modo Wi-Fi de Ultrabaja Latencia ACTIVADO (WIFI_MODE_FULL_LOW_LATENCY)"
+                } else {
+                    "Modo Wi-Fi normal restaurado"
+                }
+            )
         }
     }
 
@@ -256,6 +349,18 @@ class GameBoosterViewModel(application: Application) : AndroidViewModel(applicat
     fun resetGraphics(packageName: String? = null) {
         viewModelScope.launch {
             gameRenderManager.resetAll(packageName)
+            if (packageName != null) {
+                graphicsDriverManager.resetDriver(packageName)
+            }
+        }
+    }
+
+    /**
+     * Conmuta el controlador gráfico del juego (OpenGL ES, Vulkan, ANGLE).
+     */
+    fun applyGraphicsDriver(packageName: String, driver: GraphicsDriver) {
+        viewModelScope.launch {
+            graphicsDriverManager.applyDriver(packageName, driver)
         }
     }
 

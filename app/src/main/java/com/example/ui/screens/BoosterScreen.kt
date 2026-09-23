@@ -40,10 +40,13 @@ import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -73,6 +76,7 @@ import com.example.ui.components.AppPickerDialog
 import com.example.shizuku.ShizukuState
 import com.example.ui.redmagic.RedMagicPanelContent
 import com.example.ui.redmagic.RmAccentCyan
+import com.example.ui.redmagic.RmAccentGreen
 import com.example.ui.redmagic.RmAccentRed
 import com.example.ui.theme.StatusConnected
 import com.example.ui.theme.StatusDisconnected
@@ -100,6 +104,9 @@ fun BoosterScreen(
     val scrollState = rememberScrollState()
     val resolutionState by viewModel.resolutionState.collectAsState()
     val renderState by viewModel.gameRenderState.collectAsState()
+    val driverState by viewModel.graphicsDriverState.collectAsState()
+    val isWifiActive by viewModel.isWifiLowLatencyActive.collectAsState()
+    val isWifiEnabled by viewModel.isWifiLowLatencyEnabledByUser.collectAsState()
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -430,6 +437,155 @@ fun BoosterScreen(
                 }
             }
 
+            // Suite de Rendimiento Pro: Modo Wi-Fi Ultrabaja Latencia y Liberación Quirúrgica de RAM
+            val memoryTrimState by viewModel.memoryTrimState.collectAsState()
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("pro_performance_suite_card"),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(RmAccentCyan.copy(alpha = 0.15f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Bolt,
+                                    contentDescription = null,
+                                    tint = RmAccentCyan,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = "Optimizaciones de Red y RAM",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Herramientas de baja latencia del sistema",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // Opción Wi-Fi de Ultrabaja Latencia
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Modo Wi-Fi Ultrabaja Latencia",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = if (isWifiActive) "WIFI_MODE_FULL_LOW_LATENCY activo en segundo plano"
+                                else "Desactiva ahorro de energía del chip Wi-Fi para reducir jitter de ping",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (isWifiActive) RmAccentGreen else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = isWifiEnabled,
+                            onCheckedChange = { viewModel.toggleWifiLowLatency(it) },
+                            modifier = Modifier.testTag("switch_wifi_low_latency_toggle")
+                        )
+                    }
+
+                    // Opción Liberación Quirúrgica de Memoria RAM
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Liberación Quirúrgica de Memoria",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = "Purga de buffers y cachés (cmd activity trim-memory) sin cerrar procesos agresivamente",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = { viewModel.performMemoryTrim() },
+                            enabled = !memoryTrimState.isTrimming,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("btn_trim_memory_execute")
+                        ) {
+                            if (memoryTrimState.isTrimming) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Purgando memoria...")
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Liberar RAM Quirúrgicamente")
+                            }
+                        }
+
+                        if (memoryTrimState.totalTrimsCount > 0) {
+                            Text(
+                                text = "Última ejecución: ${memoryTrimState.lastTrimMessage}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = RmAccentGreen
+                            )
+                        }
+                    }
+                }
+            }
+
             // Biblioteca de Juegos
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -598,7 +754,7 @@ fun BoosterScreen(
 
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Button(
-                                                onClick = { viewModel.launchGameWithOverlay(context, game) },
+                                                onClick = { viewModel.openLaunchDialog(game) },
                                                 shape = RoundedCornerShape(8.dp),
                                                 modifier = Modifier.testTag("launch_game_${game.id}")
                                             ) {
@@ -762,6 +918,7 @@ fun BoosterScreen(
             RedMagicPanelContent(
                 resolutionState = resolutionState,
                 renderState = renderState,
+                driverState = driverState,
                 targetGamePackage = "Simulador de Juego",
                 onApplyResolution = { w, h, dpi ->
                     viewModel.applyResolution(w, h, dpi)
@@ -777,6 +934,9 @@ fun BoosterScreen(
                 },
                 onToggleMsaa = { disable ->
                     viewModel.toggleDisableMsaa(disable)
+                },
+                onSelectGraphicsDriver = { driver ->
+                    viewModel.applyGraphicsDriver("com.demo.game", driver)
                 },
                 onResetGraphics = {
                     viewModel.resetGraphics("com.demo.game")
@@ -798,6 +958,27 @@ fun BoosterScreen(
             onScanRequested = { viewModel.scanInstalledApps() },
             onAppSelected = { app -> viewModel.addGameToLibrary(app) },
             onDismiss = { viewModel.closeAppPicker() }
+        )
+
+        // Diálogo para elegir Ejecución Normal vs Compilación Previa AOT contra Micro-Stuttering
+        val aotState by viewModel.aotState.collectAsState()
+        val shizukuReady = shizukuState.isReady
+
+        com.example.ui.components.GameLaunchDialog(
+            isOpen = uiState.isLaunchDialogVisible,
+            game = uiState.pendingLaunchGame,
+            aotState = aotState,
+            shizukuReady = shizukuReady,
+            isWifiLowLatencyActive = isWifiActive,
+            onLaunchNormal = { game ->
+                viewModel.launchGameWithOverlay(context, game)
+            },
+            onLaunchAot = { game ->
+                viewModel.launchGameWithAot(context, game)
+            },
+            onDismiss = {
+                viewModel.dismissLaunchDialog()
+            }
         )
     }
 }

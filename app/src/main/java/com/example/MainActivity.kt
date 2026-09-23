@@ -51,6 +51,14 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: GameBoosterViewModel by viewModels()
 
+    override fun attachBaseContext(newBase: android.content.Context) {
+        val config = android.content.res.Configuration(newBase.resources.configuration).apply {
+            fontScale = 1.0f
+        }
+        val contextWithFixedFont = newBase.createConfigurationContext(config)
+        super.attachBaseContext(contextWithFixedFont)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()

@@ -24,6 +24,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -73,6 +75,7 @@ import com.example.shizuku.ResolutionManager
 import com.example.shizuku.ScriptManager
 import com.example.ui.redmagic.RedMagicPanelContent
 import com.example.ui.redmagic.RmAccentRed
+import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -135,9 +138,19 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
 
     private lateinit var windowManager: WindowManager
     private lateinit var scriptManager: ScriptManager
+
+    override fun attachBaseContext(newBase: Context) {
+        val config = android.content.res.Configuration(newBase.resources.configuration).apply {
+            fontScale = 1.0f
+        }
+        val contextWithFixedFont = newBase.createConfigurationContext(config)
+        super.attachBaseContext(contextWithFixedFont)
+    }
     private lateinit var resolutionManager: ResolutionManager
     private lateinit var gameRenderManager: GameRenderManager
     private lateinit var graphicsDriverManager: GraphicsDriverManager
+    private lateinit var memoryTrimManager: com.example.shizuku.MemoryTrimManager
+    private lateinit var wifiLowLatencyManager: WifiLowLatencyManager
 
     private var composeView: ComposeView? = null
     private var isPanelExpanded = mutableStateOf(false)
@@ -171,6 +184,8 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
         resolutionManager = ResolutionManager(applicationContext, scriptManager)
         gameRenderManager = GameRenderManager(applicationContext, scriptManager)
         graphicsDriverManager = GraphicsDriverManager(applicationContext, scriptManager)
+        memoryTrimManager = com.example.shizuku.MemoryTrimManager(applicationContext, scriptManager)
+        wifiLowLatencyManager = WifiLowLatencyManager.getInstance(applicationContext)
 
         val metrics = resources.displayMetrics
         bubbleX = 0
@@ -191,6 +206,9 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
 
                 _activeGamePackage.value = gamePackage
                 _isRunning.value = true
+
+                // Activa el Modo Wi-Fi de Ultrabaja Latencia para estabilizar el ping
+                WifiLowLatencyManager.getInstance(applicationContext).acquireLowLatency()
 
                 startForeground(NOTIFICATION_ID, buildNotification(gameName))
                 showFloatingOverlay()
@@ -353,70 +371,85 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
             setViewTreeViewModelStoreOwner(this@GameBoosterOverlayService)
 
             setContent {
-                val resolutionState by resolutionManager.state.collectAsState()
-                val renderState by gameRenderManager.state.collectAsState()
-                val driverState by graphicsDriverManager.state.collectAsState()
-                val isExpanded by isPanelExpanded
+                MyApplicationTheme {
+                    val resolutionState by resolutionManager.state.collectAsState()
+                    val renderState by gameRenderManager.state.collectAsState()
+                    val driverState by graphicsDriverManager.state.collectAsState()
+                    val isExpanded by isPanelExpanded
 
-                if (!isExpanded) {
-                    // Muestra ÚNICAMENTE la burbuja flotante compacta.
-                    // No hay vistas que cubran el resto de la pantalla, el juego responde normalmente.
-                    FloatingDraggableBubble(
-                        onClick = { expandPanel() },
-                        onDrag = { dx, dy -> updateBubblePosition(dx, dy) }
-                    )
-                } else {
-                    // Al expandirse, ocupa la pantalla para mostrar el panel táctico Red Magic
-                    RedMagicPanelContent(
-                        resolutionState = resolutionState,
-                        renderState = renderState,
-                        driverState = driverState,
-                        targetGamePackage = _activeGamePackage.value,
-                        onApplyResolution = { w, h, dpi ->
-                            serviceScope.launch {
-                                resolutionManager.applyResolution(w, h, dpi)
-                            }
-                        },
-                        onResetResolution = {
-                            serviceScope.launch {
-                                resolutionManager.resetResolution()
-                            }
-                        },
-                        onToggleAutoDpi = { enabled ->
-                            resolutionManager.toggleAutoCalculateDpi(enabled)
-                        },
-                        onRenderScaleChange = { scale ->
-                            val pkg = _activeGamePackage.value
-                            if (!pkg.isNullOrBlank()) {
+                    if (!isExpanded) {
+                        // Muestra ÚNICAMENTE la burbuja flotante compacta.
+                        // No hay vistas que cubran el resto de la pantalla, el juego responde normalmente.
+                        FloatingDraggableBubble(
+                            onClick = { expandPanel() },
+                            onDrag = { dx, dy -> updateBubblePosition(dx, dy) }
+                        )
+                    } else {
+                        // Al expandirse, ocupa la pantalla para mostrar el panel táctico Red Magic
+                        RedMagicPanelContent(
+                            resolutionState = resolutionState,
+                            renderState = renderState,
+                            driverState = driverState,
+                            targetGamePackage = _activeGamePackage.value,
+                            onApplyResolution = { w, h, dpi ->
                                 serviceScope.launch {
-                                    gameRenderManager.applyRenderScale(pkg, scale)
+                                    resolutionManager.applyResolution(w, h, dpi)
                                 }
-                            }
-                        },
-                        onToggleMsaa = { disable ->
-                            serviceScope.launch {
-                                gameRenderManager.toggleDisableMsaa(disable)
-                            }
-                        },
-                        onSelectGraphicsDriver = { driver ->
-                            val pkg = _activeGamePackage.value
-                            if (!pkg.isNullOrBlank()) {
+                            },
+                            onResetResolution = {
                                 serviceScope.launch {
-                                    graphicsDriverManager.applyDriver(pkg, driver)
+                                    resolutionManager.resetResolution()
                                 }
+                            },
+                            onToggleAutoDpi = { enabled ->
+                                resolutionManager.toggleAutoCalculateDpi(enabled)
+                            },
+                            onRenderScaleChange = { scale ->
+                                val pkg = _activeGamePackage.value
+                                if (!pkg.isNullOrBlank()) {
+                                    serviceScope.launch {
+                                        gameRenderManager.applyRenderScale(pkg, scale)
+                                    }
+                                }
+                            },
+                            onToggleMsaa = { disable ->
+                                serviceScope.launch {
+                                    gameRenderManager.toggleDisableMsaa(disable)
+                                }
+                            },
+                            onSelectGraphicsDriver = { driver ->
+                                val pkg = _activeGamePackage.value
+                                if (!pkg.isNullOrBlank()) {
+                                    serviceScope.launch {
+                                        graphicsDriverManager.applyDriver(pkg, driver)
+                                    }
+                                }
+                            },
+                            onResetGraphics = {
+                                val pkg = _activeGamePackage.value
+                                serviceScope.launch {
+                                    gameRenderManager.resetAll(pkg)
+                                    graphicsDriverManager.resetDriver(pkg)
+                                }
+                            },
+                            onTrimMemory = {
+                                serviceScope.launch {
+                                    memoryTrimManager.trimBackgroundMemory()
+                                }
+                            },
+                            onToggleWifiLowLatency = { enabled ->
+                                wifiLowLatencyManager.setEnabledByUser(enabled)
+                                if (enabled) {
+                                    wifiLowLatencyManager.acquireLowLatency()
+                                } else {
+                                    wifiLowLatencyManager.releaseLowLatency()
+                                }
+                            },
+                            onClosePanel = {
+                                collapsePanel()
                             }
-                        },
-                        onResetGraphics = {
-                            val pkg = _activeGamePackage.value
-                            serviceScope.launch {
-                                gameRenderManager.resetAll(pkg)
-                                graphicsDriverManager.resetDriver(pkg)
-                            }
-                        },
-                        onClosePanel = {
-                            collapsePanel()
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -484,6 +517,9 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
 
         gameWatcherJob?.cancel()
 
+        // Liberar el bloqueo Wi-Fi de baja latencia
+        WifiLowLatencyManager.getInstance(applicationContext).releaseLowLatency()
+
         // SEGURIDAD CRÍTICA: Restaurar resolución nativa, render scale y controlador gráfico al destruir el servicio
         // Usamos NonCancellable para que la corrutina no sea cancelada al destruir el scope
         serviceScope.launch(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
@@ -518,7 +554,8 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
 
 /**
  * Burbuja deslizante flotante minimalista estilo Red Magic Game Space.
- * Soporta arrastre en pantalla (onDrag) y pulsación (onClick) sin bloquear el juego circundante.
+ * Soporta arrastre en pantalla (onDrag) y pulsación (onClick) con discriminación precisa
+ * entre toque (tap/click) y arrastre (drag), garantizando apertura instantánea sin bloquear el juego.
  */
 @Composable
 fun FloatingDraggableBubble(
@@ -528,27 +565,50 @@ fun FloatingDraggableBubble(
 ) {
     Box(
         modifier = modifier
-            .pointerInput(Unit) {
-                var totalDragDistance = 0f
-                detectDragGestures(
-                    onDragStart = {
-                        totalDragDistance = 0f
-                    },
-                    onDragEnd = {
-                        // Si el desplazamiento total fue mínimo, se interpreta como un tap (click)
-                        if (totalDragDistance < 15f) {
-                            onClick()
+            .pointerInput(onClick) {
+                // Umbral de movimiento para considerar un gesto como arrastre en vez de click
+                val touchSlop = viewConfiguration.touchSlop
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val downPosition = down.position
+                    val downTime = System.currentTimeMillis()
+                    var isDrag = false
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
+
+                        if (change.isConsumed) {
+                            // Si otro consumidor interceptó el gesto, cancelamos
+                            break
                         }
-                    },
-                    onDragCancel = {
-                        totalDragDistance = 0f
-                    },
-                    onDrag = { change, dragAmount ->
-                        change.consume()
-                        totalDragDistance += kotlin.math.abs(dragAmount.x) + kotlin.math.abs(dragAmount.y)
-                        onDrag(dragAmount.x, dragAmount.y)
+
+                        if (!change.pressed) {
+                            // El dedo se ha levantado (Action UP)
+                            val duration = System.currentTimeMillis() - downTime
+                            val distance = (change.position - downPosition).getDistance()
+                            
+                            if (!isDrag && distance < touchSlop && duration < 600L) {
+                                change.consume()
+                                onClick()
+                            }
+                            break
+                        } else {
+                            val dragDistance = (change.position - downPosition).getDistance()
+                            if (!isDrag && dragDistance > touchSlop) {
+                                isDrag = true
+                            }
+
+                            if (isDrag) {
+                                val dragDelta = change.position - change.previousPosition
+                                if (dragDelta.x != 0f || dragDelta.y != 0f) {
+                                    change.consume()
+                                    onDrag(dragDelta.x, dragDelta.y)
+                                }
+                            }
+                        }
                     }
-                )
+                }
             }
             .clip(RoundedCornerShape(topEnd = 16.dp, bottomEnd = 16.dp))
             .background(Color(0xF00B0F19))

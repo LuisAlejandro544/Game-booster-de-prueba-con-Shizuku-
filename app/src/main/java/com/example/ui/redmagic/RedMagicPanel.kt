@@ -111,6 +111,8 @@ fun RedMagicPanelContent(
     onToggleMsaa: (Boolean) -> Unit = {},
     onSelectGraphicsDriver: (GraphicsDriver) -> Unit = {},
     onResetGraphics: () -> Unit = {},
+    onTrimMemory: () -> Unit = {},
+    onToggleWifiLowLatency: (Boolean) -> Unit = {},
     onClosePanel: () -> Unit,
     targetGamePackage: String? = null,
     modifier: Modifier = Modifier
@@ -315,7 +317,10 @@ fun RedMagicPanelContent(
                     }
 
                     RedMagicTab.PERFORMANCE -> {
-                        PerformanceTabContent()
+                        PerformanceTabContent(
+                            onTrimMemory = onTrimMemory,
+                            onToggleWifiLowLatency = onToggleWifiLowLatency
+                        )
                     }
 
                     RedMagicTab.TOOLS -> {

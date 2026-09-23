@@ -11,7 +11,19 @@ Aplicación modular de optimización de juegos (**Game Booster**) para Android, 
    - Despliega un panel lateral táctico inspirado en el *Game Space* de los teléfonos para juegos de alta gama.
    - Barra modular de íconos para cada herramienta (Gráficos & Render, Resolución/DPI, Rendimiento, Ajustes rápidos).
 
-2. **Controlador Gráfico con Detección Automática (OpenGL ES, Vulkan, ANGLE):**
+2. **Compilación Previa AOT contra el Micro-Stuttering (dex2oat):**
+   - **Elección previa al iniciar el juego:** Al pulsar *Iniciar*, el usuario puede elegir entre **Ejecución Normal** (acceso instantáneo) o **Compilación Previa AOT** (`cmd package compile -m speed-profile -f <paquete>`).
+   - **Erradicación del Micro-Stuttering:** Fuerza la compilación Ahead-Of-Time del código DEX a instrucciones de máquina nativas en la CPU, eliminando los tirones bruscos y caídas de cuadros ocasionados por el compilador JIT en caliente durante las partidas multijugador.
+
+3. **Modo Wi-Fi de Ultrabaja Latencia (`WIFI_MODE_FULL_LOW_LATENCY`):**
+   - **Estabilidad de Ping y Antijitter:** Adquiere un bloqueo nativo de red (`WifiLock` con modo baja latencia en Android 10+ / API 29+) durante la sesión de juego.
+   - Deshabilita suspensiones intermitentes de ahorro de energía del módem Wi-Fi, estabilizando la entrega de paquetes de red y erradicando picos súbitos de lag.
+
+4. **Liberación Quirúrgica de Memoria de Apps en Segundo Plano:**
+   - **Sin cierres forzados destructivos:** A diferencia de aplicaciones "task killers" placebo que fuerzan la detención de apps provocando reinicios en bucle y sobrecalentamiento, Game Booster utiliza `cmd activity trim-memory --all RUNNING_CRITICAL` a través de Shizuku.
+   - Envía la señal oficial del sistema operativo a todas las apps secundarias para que vacíen cachés bitmap, buffers UI y recursos no esenciales, liberando cientos de megabytes de RAM real para el juego.
+
+5. **Controlador Gráfico con Detección Automática (OpenGL ES, Vulkan, ANGLE):**
    - **Detección inteligente del controlador por defecto:** Inspecciona los mapas de memoria del proceso del juego (`/proc/$PID/maps`), la telemetría de SurfaceFlinger y las configuraciones de Android para identificar si el juego corre sobre Vulkan u OpenGL ES.
    - **Conmutador en caliente dentro de la burbuja:** Permite forzar en vivo el controlador deseado:
      * **OpenGL ES:** Mayor compatibilidad en títulos clásicos o emuladores.
@@ -19,32 +31,32 @@ Aplicación modular de optimización de juegos (**Game Booster**) para Android, 
      * **ANGLE (Google):** Traduce llamadas de OpenGL ES a Vulkan para optimizar pipelines de shaders y erradicar caídas bruscas de FPS.
    - **Reversión garantizada:** El controlador gráfico personalizado solo tiene vigencia durante la partida activa; al salir del juego o cerrar el overlay, se restablece de inmediato a la configuración normal del sistema.
 
-3. **Downscale Interno de Superficie (`cmd game set --downscale`) Deslizable en Vivo:**
+6. **Downscale Interno de Superficie (`cmd game set --downscale`) Deslizable en Vivo:**
    - **Slider en tiempo real durante la partida:** El usuario puede deslizar el renderizado del 50% al 100% mientras juega.
    - **Diferencia con la resolución global (`wm size`):** El downscale interno ordena a la GPU renderizar únicamente los polígonos 3D del juego a una resolución menor, manteniendo los textos, menús y la barra de estado de Android 100% nítidos a resolución nativa.
    - Reduce drásticamente la carga de la GPU y eleva los FPS estables en juegos exigentes (Free Fire, PUBG, Genshin Impact, COD Mobile).
 
-4. **Desactivación Forzada de Anti-Aliasing (4x MSAA) y Filtros Pesados:**
+7. **Desactivación Forzada de Anti-Aliasing (4x MSAA) y Filtros Pesados:**
    - Desactiva pasadas redundantes de suavizado de bordes mediante `settings put global force_msaa 0` y optimización de buffers del compositor de ventanas.
    - Libera ancho de banda de la GPU para eliminar tirones (*micro-stuttering*).
 
-5. **Escaneo Real de Aplicaciones y Juegos Instalados (Hilo Secundario):**
+8. **Escaneo Real de Aplicaciones y Juegos Instalados (Hilo Secundario):**
    - **Cero juegos simulados:** La aplicación no contiene juegos de muestra precargados ni simulaciones estáticas.
    - **Escáner nativo en segundo plano (`Dispatchers.IO`):** Analiza en un hilo secundario todas las aplicaciones y juegos reales instalados en el teléfono mediante `PackageManager`.
    - **Detección inteligente de juegos:** Identifica automáticamente qué aplicaciones son juegos (`CATEGORY_GAME` / `FLAG_IS_GAME`) y ofrece filtros para "Juegos", "Otras Apps" y "Todas", además de un buscador en tiempo real.
    - **Persistencia garantizada:** Los juegos agregados por el usuario se guardan de forma permanente para que tu biblioteca personalizada siempre esté lista.
 
-6. **Control Dinámico de Resolución de Pantalla y Auto-DPI:**
+9. **Control Dinámico de Resolución de Pantalla y Auto-DPI:**
    - Modificación en caliente de resolución de pantalla (`wm size`) y densidad de píxeles (`wm density`).
    - **Cálculo automático de DPI proporcional:** Evita que los botones o textos de los juegos se vean desproporcionados al cambiar de escala (ejemplo: 1080p a 720p calcula automáticamente la reducción de 420 a 320 DPI).
    - Presets preconfigurados para juegos competitivos (100% Nativo, 85% Óptimo, 75% HD+ 720p, 60% Max FPS 540p) y sliders manuales.
 
-7. **Seguridad y Restauración Automática Total:**
-   - **Al salir del juego:** Un monitor en segundo plano detecta cuando abandonas la partida (vía paquetes y eventos de foco) y **restaura automáticamente** la resolución de pantalla, la escala de renderizado y el controlador gráfico a sus valores originales.
+10. **Seguridad y Restauración Automática Total:**
+   - **Al salir del juego:** Un monitor en segundo plano detecta cuando abandonas la partida (vía paquetes y eventos de foco) y **restaura automáticamente** la resolución de pantalla, la escala de renderizado, el controlador gráfico y el bloqueo Wi-Fi a sus valores originales.
    - **Botón dentro del juego:** Botones explícitos **"Restaurar Resolución Original"** y **"Restaurar Escala y Controlador Nativo"** dentro del panel.
    - **Regla estricta:** Cero uso de variables globales persistentes (`persist.sys.*`), previniendo cualquier riesgo de bootloop o inestabilidad del sistema operativo.
 
-8. **Activación 100% desde el Teléfono (Sin PC):**
+11. **Activación 100% desde el Teléfono (Sin PC):**
    - Diseñado específicamente para usuarios que solo cuentan con su teléfono móvil.
    - Guía interactiva paso a paso para vincular Shizuku mediante **Depuración Inalámbrica** (Android 11 o superior) o acceso **Root / Sui**.
 
@@ -72,6 +84,8 @@ Los scripts residen en `app/src/main/assets/scripts/` y son gestionados por `Scr
 
 | Script | Propósito | Argumentos |
 | :--- | :--- | :--- |
+| `compile_game_aot.sh` | Compila DEX a instrucciones nativas AOT con `dex2oat` (`cmd package compile`). | `<paquete> [speed-profile\|speed]` |
+| `trim_background_memory.sh` | Liberación quirúrgica de memoria RAM de apps secundarias (`cmd activity trim-memory`). | Ninguno |
 | `detect_graphics_driver.sh` | Detecta el controlador gráfico activo y nativo del juego (`/proc/$PID/maps`, SurfaceFlinger). | `<paquete>` |
 | `apply_graphics_driver.sh` | Conmuta el controlador a OpenGL, Vulkan o ANGLE, o restablece al sistema. | `<opengl\|vulkan\|angle\|reset> [paquete]` |
 | `apply_game_render_scale.sh` | Aplica la escala de renderizado interno a la superficie 3D del juego (`cmd game`). | `<escala 0.5-1.0> <paquete>` |

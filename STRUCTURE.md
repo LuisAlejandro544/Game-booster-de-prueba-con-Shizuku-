@@ -18,6 +18,8 @@ Este documento desglosa la estructura del proyecto, la responsabilidad de cada p
 │   │   │   │               └── IPackageManager.aidl      # Interfaz AIDL para IPC con el sistema
 │   │   │   ├── assets/
 │   │   │   │   └── scripts/
+│   │   │   │       ├── compile_game_aot.sh              # Script Shell: compila DEX a código nativo AOT con dex2oat
+│   │   │   │       ├── trim_background_memory.sh        # Script Shell: liberación quirúrgica de RAM vía cmd activity trim-memory
 │   │   │   │       ├── detect_graphics_driver.sh        # Script Shell: detecta driver activo/nativo (/proc/maps, dumpsys)
 │   │   │   │       ├── apply_graphics_driver.sh         # Script Shell: conmuta a OpenGL, Vulkan o ANGLE, y resetea
 │   │   │   │       ├── apply_game_render_scale.sh       # Script Shell: downscale 3D interno vía 'cmd game set'
@@ -34,8 +36,11 @@ Este documento desglosa la estructura del proyecto, la responsabilidad de cada p
 │   │   │   │   │   └── NotificationBlockerManager.kt    # Gestor de no molestar y bloqueo de notificaciones
 │   │   │   │   ├── service/
 │   │   │   │   │   ├── GameBoosterNotificationListener.kt # Listener de notificaciones
-│   │   │   │   │   └── GameBoosterOverlayService.kt     # Servicio en primer plano: ventana flotante y panel Red Magic
+│   │   │   │   │   ├── GameBoosterOverlayService.kt     # Servicio en primer plano: ventana flotante y panel Red Magic
+│   │   │   │   │   └── WifiLowLatencyManager.kt         # Gestor nativo del Modo Wi-Fi de Ultrabaja Latencia (WIFI_MODE_FULL_LOW_LATENCY)
 │   │   │   │   ├── shizuku/
+│   │   │   │   │   ├── AotCompilationManager.kt         # Gestor de la Compilación Previa AOT contra el Micro-Stuttering
+│   │   │   │   │   ├── MemoryTrimManager.kt             # Gestor de la Liberación Quirúrgica de Memoria RAM
 │   │   │   │   │   ├── GameRenderManager.kt             # Gestor del motor de renderizado (downscale y MSAA)
 │   │   │   │   │   ├── GraphicsDriverManager.kt         # Gestor de controladores gráficos (OpenGL ES, Vulkan, ANGLE)
 │   │   │   │   │   ├── ResolutionManager.kt             # Lógica matemática de DPI proporcional y control de resolución
@@ -44,7 +49,8 @@ Este documento desglosa la estructura del proyecto, la responsabilidad de cada p
 │   │   │   │   │   └── ShizukuPackageManager.java       # Implementación IPC con IPackageManager y ShizukuBinderWrapper
 │   │   │   │   ├── ui/
 │   │   │   │   │   ├── components/
-│   │   │   │   │   │   └── AppPickerDialog.kt           # Diálogo para buscar, filtrar y agregar apps/juegos reales
+│   │   │   │   │   │   ├── AppPickerDialog.kt           # Diálogo para buscar, filtrar y agregar apps/juegos reales
+│   │   │   │   │   │   └── GameLaunchDialog.kt          # Diálogo selector: Ejecución Normal vs Compilación Previa AOT
 │   │   │   │   │   ├── navigation/
 │   │   │   │   │   │   └── AppNavigation.kt             # Definición de rutas y destinos (Shizuku, Booster, Guía, Bloqueador)
 │   │   │   │   │   ├── redmagic/

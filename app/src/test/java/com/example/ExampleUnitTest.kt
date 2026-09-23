@@ -98,4 +98,38 @@ class ExampleUnitTest {
         assertEquals("Sample Game", game.name)
         assertEquals("com.sample.game", game.packageName)
     }
+
+    @Test
+    fun aotCompilationState_defaultsAndCustomValues() {
+        val defaultState = com.example.shizuku.AotCompilerState()
+        assertFalse(defaultState.isCompiling)
+        assertEquals(null, defaultState.lastResultSuccess)
+        assertEquals(null, defaultState.targetPackage)
+
+        val compiledState = com.example.shizuku.AotCompilerState(
+            isCompiling = false,
+            targetPackage = "com.sample.game",
+            lastResultSuccess = true,
+            progressMessage = "Compilación completada exitosamente"
+        )
+        assertFalse(compiledState.isCompiling)
+        assertEquals(true, compiledState.lastResultSuccess)
+        assertEquals("com.sample.game", compiledState.targetPackage)
+    }
+
+    @Test
+    fun memoryTrimState_defaultsAndCustomValues() {
+        val defaultState = com.example.shizuku.MemoryTrimState()
+        assertFalse(defaultState.isTrimming)
+        assertEquals(0, defaultState.totalTrimsCount)
+
+        val trimmedState = com.example.shizuku.MemoryTrimState(
+            isTrimming = false,
+            lastTrimMessage = "Memoria liberada exitosamente",
+            totalTrimsCount = 3
+        )
+        assertFalse(trimmedState.isTrimming)
+        assertEquals(3, trimmedState.totalTrimsCount)
+        assertEquals("Memoria liberada exitosamente", trimmedState.lastTrimMessage)
+    }
 }

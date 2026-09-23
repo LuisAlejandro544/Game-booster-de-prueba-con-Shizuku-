@@ -73,7 +73,23 @@ Este documento define la evolución técnica y de producto para el **Game Booste
 
 ---
 
-## 📌 Fase 6: Telemetría y Controles Tácticos Avanzados (Próxima)
+## 📌 Fase 6: Optimización de Red, AOT y Gestión Quirúrgica de RAM (Completada ✅)
+- [x] **Compilación Previa AOT contra el Micro-Stuttering (dex2oat):**
+  - Implementación del script `compile_game_aot.sh` utilizando `cmd package compile -m speed-profile -f <paquete>`.
+  - Diálogo interactivo al iniciar un juego (`GameLaunchDialog.kt`) para seleccionar entre *Ejecución Normal* y *Compilación Previa AOT*.
+  - Elimina caídas bruscas de FPS y parones causados por la compilación JIT durante partidas.
+- [x] **Modo Wi-Fi de Ultrabaja Latencia (`WIFI_MODE_FULL_LOW_LATENCY`):**
+  - Implementación de `WifiLowLatencyManager.kt` utilizando la API nativa de Android 10+ (API 29).
+  - Adquisición de `WifiLock` durante las sesiones de juego para reducir el jitter y estabilizar el ping en partidas competitivas.
+  - Switch de control tanto en la pantalla principal como en el panel lateral Red Magic.
+- [x] **Liberación Quirúrgica de Memoria RAM de Apps en Segundo Plano:**
+  - Implementación del script `trim_background_memory.sh` invocando `cmd activity trim-memory --all RUNNING_CRITICAL`.
+  - Integración en `MemoryTrimManager.kt` con feedback en tiempo real.
+  - Libera memoria purgada sin cierres abruptos ni sobrecalentamiento de CPU.
+
+---
+
+## 📌 Fase 7: Telemetría y Controles Tácticos Avanzados (Próxima)
 - [ ] **Monitor de FPS y Temperatura en Tiempo Real:**
   - Lectura de métricas desde `/sys/class/thermal/` y llamadas `dumpsys SurfaceFlinger` mediante scripts `.sh`.
   - Widget discreto en el overlay que muestra FPS reales, temperatura de batería y consumo de CPU.
@@ -83,14 +99,6 @@ Este documento define la evolución técnica y de producto para el **Game Booste
 - [ ] **Configuraciones Persistentes por Juego:**
   - Integración con base de datos local (Room) para recordar la resolución, downscale, DPI y driver gráfico de cada juego específico.
   - Aplicación automática de los ajustes al detectar el lanzamiento del juego.
-
----
-
-## 📌 Fase 7: Optimización de Red y Audio
-- [ ] **Estabilizador de Ping (Wi-Fi Low Latency Lock):**
-  - Adquisición de `WifiManager.WIFI_MODE_FULL_LOW_LATENCY` en Android 10+ para reducir jitter.
-- [ ] **Ecualizador y Potenciador de Pasos:**
-  - Integración de perfiles de audio centrados en frecuencias medias-altas para escuchar pasos y disparos en juegos shooter.
 
 ---
 

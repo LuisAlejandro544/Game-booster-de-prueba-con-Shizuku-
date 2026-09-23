@@ -19,7 +19,22 @@ Este documento define el contexto, las restricciones críticas y las reglas inmu
      * **ANGLE:** Activa la capa de traducción GLES sobre Vulkan de Google (`debug.angle.backend 2`).
    - **Ámbito estricto de juego:** Esta configuración solo debe mantenerse activa mientras el usuario se encuentra dentro del juego. Al detectar la salida del juego o cerrarse el overlay, se ejecuta de inmediato el restablecimiento a los valores estándar de Android.
 
-3. **Downscale Interno de Superficie 3D (`cmd game set --downscale`) vs Resolución Global (`wm size`):**
+3. **Compilación Previa AOT contra el Micro-Stuttering (`dex2oat`):**
+   - Antes de iniciar un juego, el usuario puede seleccionar **Compilación Previa AOT** (`cmd package compile -m speed-profile -f <paquete>`).
+   - Esta orden invoca al compilador nativo `dex2oat` del sistema operativo a través de Shizuku.
+   - Compila el bytecode DEX a código de máquina ELF nativo para la arquitectura de la CPU (arm64/armv7), previniendo los bloqueos del hilo de render por compilación JIT en momentos de alta carga gráfica.
+
+4. **Modo Wi-Fi de Ultrabaja Latencia (`WIFI_MODE_FULL_LOW_LATENCY`):**
+   - Utiliza `WifiManager.createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "GameBooster:LowLatencyLock")`.
+   - Adquirido de forma segura al iniciar la sesión de juego y liberado automáticamente al cerrarla o destruirse el servicio.
+   - Desactiva los ciclos de ahorro de energía del chip Wi-Fi sin alterar configuraciones persistentes.
+
+5. **Liberación Quirúrgica de Memoria RAM (`cmd activity trim-memory`):**
+   - Ejecuta `cmd activity trim-memory --all RUNNING_CRITICAL` seguido de `COMPLETE` mediante Shizuku.
+   - Instruye a los procesos en segundo plano a purgar cachés gráficas, imágenes no visibles y buffers de asignación.
+   - **Ventaja de estabilidad:** Evita 'kill' o 'killProcess' agresivos que provocan reinicios en bucle de servicios del sistema y picos de consumo de batería.
+
+6. **Downscale Interno de Superficie 3D (`cmd game set --downscale`) vs Resolución Global (`wm size`):**
    - **`cmd game set --downscale <0.50-1.00> <paquete>`:**
      * Es la técnica nativa introducida en Android 12+ (Game Manager Service).
      * Modifica el escalador de buffer de renderizado interno de la superficie del juego.

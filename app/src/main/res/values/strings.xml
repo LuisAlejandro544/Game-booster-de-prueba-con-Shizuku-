@@ -2,4 +2,7 @@
     <string name="app_name">Game Booster</string>
     <string name="notification_blocker_service_title">Bloqueador de Notificaciones Game Booster</string>
     <string name="nav_title_dnd">No Molestar</string>
+    <string name="aot_compilation_title">Compilación Previa AOT</string>
+    <string name="wifi_low_latency_title">Modo Wi-Fi Ultrabaja Latencia</string>
+    <string name="memory_trim_title">Liberación Quirúrgica de Memoria</string>
 </resources>
