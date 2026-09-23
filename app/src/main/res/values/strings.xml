@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Game Booster</string>
+    <string name="notification_blocker_service_title">Bloqueador de Notificaciones Game Booster</string>
+    <string name="nav_title_dnd">No Molestar</string>
+</resources>
