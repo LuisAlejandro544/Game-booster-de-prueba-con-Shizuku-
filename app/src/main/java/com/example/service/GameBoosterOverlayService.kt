@@ -67,6 +67,8 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.MainActivity
 import com.example.shizuku.GameRenderManager
+import com.example.shizuku.GraphicsDriver
+import com.example.shizuku.GraphicsDriverManager
 import com.example.shizuku.ResolutionManager
 import com.example.shizuku.ScriptManager
 import com.example.ui.redmagic.RedMagicPanelContent
@@ -135,6 +137,7 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
     private lateinit var scriptManager: ScriptManager
     private lateinit var resolutionManager: ResolutionManager
     private lateinit var gameRenderManager: GameRenderManager
+    private lateinit var graphicsDriverManager: GraphicsDriverManager
 
     private var composeView: ComposeView? = null
     private var isPanelExpanded = mutableStateOf(false)
@@ -167,6 +170,7 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
         scriptManager = ScriptManager(applicationContext)
         resolutionManager = ResolutionManager(applicationContext, scriptManager)
         gameRenderManager = GameRenderManager(applicationContext, scriptManager)
+        graphicsDriverManager = GraphicsDriverManager(applicationContext, scriptManager)
 
         val metrics = resources.displayMetrics
         bubbleX = 0
@@ -190,6 +194,9 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
 
                 startForeground(NOTIFICATION_ID, buildNotification(gameName))
                 showFloatingOverlay()
+                serviceScope.launch {
+                    graphicsDriverManager.detectDriver(gamePackage)
+                }
                 startGameWatcher(gamePackage)
             }
         }
@@ -348,6 +355,7 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
             setContent {
                 val resolutionState by resolutionManager.state.collectAsState()
                 val renderState by gameRenderManager.state.collectAsState()
+                val driverState by graphicsDriverManager.state.collectAsState()
                 val isExpanded by isPanelExpanded
 
                 if (!isExpanded) {
@@ -362,6 +370,7 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
                     RedMagicPanelContent(
                         resolutionState = resolutionState,
                         renderState = renderState,
+                        driverState = driverState,
                         targetGamePackage = _activeGamePackage.value,
                         onApplyResolution = { w, h, dpi ->
                             serviceScope.launch {
@@ -389,9 +398,19 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
                                 gameRenderManager.toggleDisableMsaa(disable)
                             }
                         },
+                        onSelectGraphicsDriver = { driver ->
+                            val pkg = _activeGamePackage.value
+                            if (!pkg.isNullOrBlank()) {
+                                serviceScope.launch {
+                                    graphicsDriverManager.applyDriver(pkg, driver)
+                                }
+                            }
+                        },
                         onResetGraphics = {
+                            val pkg = _activeGamePackage.value
                             serviceScope.launch {
-                                gameRenderManager.resetAll(_activeGamePackage.value)
+                                gameRenderManager.resetAll(pkg)
+                                graphicsDriverManager.resetDriver(pkg)
                             }
                         },
                         onClosePanel = {
@@ -437,11 +456,13 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
                             if (consecutiveNonGameTicks >= 2) {
                                 val isCustomRes = resolutionManager.state.value.isCustomResolutionActive
                                 val isDownscale = gameRenderManager.state.value.isDownscaleActive
+                                val isCustomDriver = graphicsDriverManager.state.value.isCustomDriverActive
 
-                                if (isCustomRes || isDownscale) {
-                                    Log.i(TAG, "Salida de juego $gamePackage confirmada. Restaurando resolución nativa y render scale.")
+                                if (isCustomRes || isDownscale || isCustomDriver) {
+                                    Log.i(TAG, "Salida de juego $gamePackage confirmada. Restaurando resolución nativa, render scale y controlador gráfico.")
                                     resolutionManager.resetResolution()
                                     gameRenderManager.resetAll(gamePackage)
+                                    graphicsDriverManager.resetDriver(gamePackage)
                                 }
                             }
                         } else {
@@ -463,12 +484,13 @@ class GameBoosterOverlayService : Service(), LifecycleOwner, ViewModelStoreOwner
 
         gameWatcherJob?.cancel()
 
-        // SEGURIDAD CRÍTICA: Restaurar resolución nativa y render scale al destruir el servicio
+        // SEGURIDAD CRÍTICA: Restaurar resolución nativa, render scale y controlador gráfico al destruir el servicio
         // Usamos NonCancellable para que la corrutina no sea cancelada al destruir el scope
         serviceScope.launch(Dispatchers.IO + kotlinx.coroutines.NonCancellable) {
             try {
                 resolutionManager.resetResolution()
                 gameRenderManager.resetAll(gamePkg)
+                graphicsDriverManager.resetDriver(gamePkg)
             } catch (e: Exception) {
                 Log.e(TAG, "Error restaurando ajustes al salir: ${e.message}")
             }

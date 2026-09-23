@@ -47,6 +47,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.shizuku.DisplayResolutionState
 import com.example.shizuku.GameRenderState
+import com.example.shizuku.GraphicsDriver
+import com.example.shizuku.GraphicsDriverState
 
 /**
  * Pestañas y herramientas del panel táctico estilo Red Magic Game Space.
@@ -57,7 +59,7 @@ enum class RedMagicTab(
     val badge: String? = null
 ) {
     RENDER(
-        title = "Render Scale",
+        title = "Gráficos & Render",
         icon = Icons.Default.Tune,
         badge = "GPU"
     ),
@@ -90,6 +92,8 @@ val RmAccentGreen = Color(0xFF10B981)
  * Panel lateral desplegable estilo Red Magic Game Space.
  *
  * Características:
+ * - Conmutación en caliente de controlador gráfico (OpenGL ES, Vulkan, ANGLE).
+ * - Detección automática del motor gráfico nativo del juego.
  * - Slider interactivo en tiempo real para escala de renderizado (cmd game downscale).
  * - Control de resolución de pantalla y DPI proporcional.
  * - Desactivación forzada de 4x MSAA y optimizaciones de GPU.
@@ -99,11 +103,13 @@ val RmAccentGreen = Color(0xFF10B981)
 fun RedMagicPanelContent(
     resolutionState: DisplayResolutionState,
     renderState: GameRenderState = GameRenderState(),
+    driverState: GraphicsDriverState = GraphicsDriverState(),
     onApplyResolution: (width: Int, height: Int, dpi: Int) -> Unit,
     onResetResolution: () -> Unit,
     onToggleAutoDpi: (Boolean) -> Unit,
     onRenderScaleChange: (Float) -> Unit = {},
     onToggleMsaa: (Boolean) -> Unit = {},
+    onSelectGraphicsDriver: (GraphicsDriver) -> Unit = {},
     onResetGraphics: () -> Unit = {},
     onClosePanel: () -> Unit,
     targetGamePackage: String? = null,
@@ -275,9 +281,11 @@ fun RedMagicPanelContent(
                     RedMagicTab.RENDER -> {
                         RenderTabContent(
                             renderState = renderState,
+                            driverState = driverState,
                             targetGamePackage = targetGamePackage,
                             onRenderScaleChange = onRenderScaleChange,
                             onToggleMsaa = onToggleMsaa,
+                            onSelectGraphicsDriver = onSelectGraphicsDriver,
                             onResetGraphics = onResetGraphics
                         )
                     }

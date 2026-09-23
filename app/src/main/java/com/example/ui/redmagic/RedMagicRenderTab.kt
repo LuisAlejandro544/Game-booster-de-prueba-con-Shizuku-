@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.DeveloperBoard
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tune
@@ -43,23 +43,29 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.shizuku.GameRenderState
+import com.example.shizuku.GraphicsDriver
+import com.example.shizuku.GraphicsDriverState
 import kotlin.math.roundToInt
 
 /**
- * Pestaña de Control de Renderizado Interno y Filtros Gráficos estilo Red Magic.
+ * Pestaña de Control de Renderizado Interno, Controlador Gráfico (OpenGL, Vulkan, ANGLE)
+ * y Filtros Gráficos estilo Red Magic.
  *
  * Funcionalidades clave:
- * 1. Slider interactivo en tiempo real para deslizar la escala de renderizado (50% a 100%)
- *    mientras el usuario está jugando mediante 'cmd game set --downscale'.
- * 2. Interruptor para desactivación forzada de 4x MSAA y optimización de buffers de GPU.
- * 3. Presets tácticos directos (50% Ultra FPS, 70% Equilibrado, 85% Calidad, 100% Nativo).
+ * 1. Conmutación en caliente de controladores gráficos (OpenGL ES, Vulkan, ANGLE).
+ * 2. Detección automática del controlador gráfico nativo/por defecto del juego.
+ * 3. Slider interactivo en tiempo real para escala de renderizado 3D (50% a 100%).
+ * 4. Desactivación forzada de 4x MSAA y optimización de buffers de GPU.
+ * 5. Reversión automática a la configuración nativa al salir del juego.
  */
 @Composable
 fun RenderTabContent(
     renderState: GameRenderState,
+    driverState: GraphicsDriverState = GraphicsDriverState(),
     targetGamePackage: String?,
     onRenderScaleChange: (Float) -> Unit,
     onToggleMsaa: (Boolean) -> Unit,
+    onSelectGraphicsDriver: (GraphicsDriver) -> Unit = {},
     onResetGraphics: () -> Unit
 ) {
     var sliderValue by remember(renderState.renderScale) {
@@ -68,7 +74,7 @@ fun RenderTabContent(
 
     val percentage = (sliderValue * 100).roundToInt()
 
-    // 1. Tarjeta de Estado del Renderizado
+    // 1. Tarjeta de Estado del Renderizado y Telemetría GPU
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -89,7 +95,7 @@ fun RenderTabContent(
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold
                 )
-                if (renderState.isOperating) {
+                if (renderState.isOperating || driverState.isOperating) {
                     CircularProgressIndicator(
                         color = RmAccentCyan,
                         modifier = Modifier.size(16.dp),
@@ -105,15 +111,163 @@ fun RenderTabContent(
                 fontWeight = FontWeight.Bold
             )
 
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Juego: ${targetGamePackage ?: "No detectado"}",
+                    color = Color.White.copy(alpha = 0.5f),
+                    style = MaterialTheme.typography.labelSmall
+                )
+                Text(
+                    text = driverState.gpuName.take(20),
+                    color = RmAccentCyan.copy(alpha = 0.8f),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium
+                )
+            }
+        }
+    }
+
+    // 2. Sección: CONTROLADOR GRÁFICO (OpenGL / Vulkan / ANGLE)
+    Text(
+        text = "CONTROLADOR GRÁFICO (GPU DRIVER)",
+        color = Color.White.copy(alpha = 0.7f),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(RmSurface)
+            .border(1.dp, RmSurfaceBorder, RoundedCornerShape(12.dp))
+            .padding(14.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            // Cabecera con indicación del controlador por defecto detectado
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Motor Gráfico Activo",
+                        color = Color.White,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Por defecto: ${driverState.detectedDefaultDriver.displayName}",
+                        color = RmAccentGreen,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Badge del controlador activo
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(
+                            if (driverState.isCustomDriverActive) RmAccentCyan.copy(alpha = 0.2f)
+                            else Color(0xFF0F172A)
+                        )
+                        .border(
+                            1.dp,
+                            if (driverState.isCustomDriverActive) RmAccentCyan else RmSurfaceBorder,
+                            RoundedCornerShape(6.dp)
+                        )
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = driverState.currentActiveDriver.displayName.uppercase(),
+                        color = if (driverState.isCustomDriverActive) RmAccentCyan else Color.White.copy(alpha = 0.8f),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+
+            // Explicación técnica del controlador actualmente seleccionado
             Text(
-                text = "Juego objetivo: ${targetGamePackage ?: "No detectado"}",
-                color = Color.White.copy(alpha = 0.5f),
+                text = driverState.currentActiveDriver.technicalDesc,
+                color = Color.White.copy(alpha = 0.65f),
+                style = MaterialTheme.typography.bodySmall,
+                fontSize = 11.sp
+            )
+
+            // Selector de los 3 controladores principales + opción por defecto
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf(
+                    GraphicsDriver.OPENGL to "OpenGL ES",
+                    GraphicsDriver.VULKAN to "Vulkan",
+                    GraphicsDriver.ANGLE to "ANGLE"
+                ).forEach { (driver, label) ->
+                    val isSelected = driverState.currentActiveDriver == driver
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) RmAccentCyan.copy(alpha = 0.25f) else Color(0xFF0F172A))
+                            .border(
+                                width = 1.dp,
+                                color = if (isSelected) RmAccentCyan else RmSurfaceBorder,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .clickable {
+                                onSelectGraphicsDriver(driver)
+                            }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.7f),
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Botón rápido para volver al controlador por defecto del juego si hay uno forzado
+            if (driverState.isCustomDriverActive) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFF0F172A))
+                        .clickable { onSelectGraphicsDriver(GraphicsDriver.DEFAULT) }
+                        .padding(vertical = 6.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Restablecer a controlador por defecto (${driverState.detectedDefaultDriver.displayName})",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Text(
+                text = "Solo aplica mientras juegas. Al salir del juego, Android regresa a su controlador normal.",
+                color = Color.White.copy(alpha = 0.45f),
                 style = MaterialTheme.typography.labelSmall
             )
         }
     }
 
-    // 2. Control Deslizante de Escala de Renderizado (cmd game downscale)
+    // 3. Control Deslizante de Escala de Renderizado (cmd game downscale)
     Text(
         text = "ESCALA DE RENDERIZADO (GPU)",
         color = Color.White.copy(alpha = 0.7f),
@@ -230,7 +384,7 @@ fun RenderTabContent(
         }
     }
 
-    // 3. Desactivación forzada de Anti-Aliasing (MSAA) y Filtros Pesados
+    // 4. Desactivación forzada de Anti-Aliasing (MSAA) y Filtros Pesados
     Text(
         text = "OPTIMIZACIÓN DE FILTROS GPU",
         color = Color.White.copy(alpha = 0.7f),
@@ -281,7 +435,7 @@ fun RenderTabContent(
         }
     }
 
-    // 4. Botón Restaurar Ajustes Gráficos
+    // 5. Botón Restaurar Ajustes Gráficos
     OutlinedButton(
         onClick = onResetGraphics,
         modifier = Modifier
@@ -298,7 +452,7 @@ fun RenderTabContent(
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
-            text = "RESTAURAR ESCALA Y FILTROS NATIVOS",
+            text = "RESTAURAR ESCALA Y CONTROLADOR NATIVO",
             color = Color.White,
             fontWeight = FontWeight.Bold,
             style = MaterialTheme.typography.labelMedium

@@ -1,6 +1,6 @@
 # ROADMAP - Hoja de Ruta de Desarrollo
 
-Este documento define la evolución técnica y de producto para el **Game Booster** con Shizuku, panel flotante Red Magic y control de renderizado.
+Este documento define la evolución técnica y de producto para el **Game Booster** con Shizuku, panel flotante Red Magic, control de renderizado y conmutación de controladores gráficos.
 
 ---
 
@@ -42,7 +42,22 @@ Este documento define la evolución técnica y de producto para el **Game Booste
 
 ---
 
-## 📌 Fase 4: Escáner Nativo y Biblioteca Personalizada (Completada ✅)
+## 📌 Fase 4: Controlador Gráfico Dinámico (OpenGL, Vulkan, ANGLE) (Completada ✅)
+- [x] **Detección Automática del Controlador Nativo:**
+  - Script `detect_graphics_driver.sh` que inspecciona `/proc/$PID/maps`, SurfaceFlinger y configuraciones globales de Android.
+  - Identifica el driver por defecto que usa el juego (Vulkan o OpenGL ES).
+- [x] **Conmutación en Caliente desde el Panel Flotante:**
+  - Script `apply_graphics_driver.sh` para forzar OpenGL ES, Vulkan o capa ANGLE en tiempo de ejecución.
+  - Integración en `GraphicsDriverManager.kt` con corrutinas en `Dispatchers.IO`.
+  - Tarjeta de control de driver integrada en `RedMagicRenderTab.kt` con badge de estado y explicaciones técnicas.
+- [x] **Reversión Segura al Salir del Juego:**
+  - Se garantiza que las configuraciones de driver solo aplican mientras se juega.
+  - Restauración automática en el watcher de salida y en el ciclo de vida `onDestroy()` del servicio overlay.
+  - Cero uso de `persist.sys.*`.
+
+---
+
+## 📌 Fase 5: Escáner Nativo y Biblioteca Personalizada (Completada ✅)
 - [x] **Eliminación Total de Datos Simulados:** Eliminación de juegos fijos o mocks estáticos.
 - [x] **Escaneo de Apps y Juegos en Hilo Secundario:**
   - Implementación de `AppScanner.kt` con ejecución estricta en `Dispatchers.IO`.
@@ -58,7 +73,7 @@ Este documento define la evolución técnica y de producto para el **Game Booste
 
 ---
 
-## 📌 Fase 5: Telemetría y Controles Tácticos Avanzados (Próxima)
+## 📌 Fase 6: Telemetría y Controles Tácticos Avanzados (Próxima)
 - [ ] **Monitor de FPS y Temperatura en Tiempo Real:**
   - Lectura de métricas desde `/sys/class/thermal/` y llamadas `dumpsys SurfaceFlinger` mediante scripts `.sh`.
   - Widget discreto en el overlay que muestra FPS reales, temperatura de batería y consumo de CPU.
@@ -66,12 +81,12 @@ Este documento define la evolución técnica y de producto para el **Game Booste
   - Cambio forzado de tasa de refresco a 90Hz / 120Hz para juegos que limitan a 60Hz.
   - Script complementario `set_refresh_rate.sh` usando `settings put system min_refresh_rate`.
 - [ ] **Configuraciones Persistentes por Juego:**
-  - Integración con base de datos local (Room) para recordar la resolución, downscale y DPI de cada juego específico.
+  - Integración con base de datos local (Room) para recordar la resolución, downscale, DPI y driver gráfico de cada juego específico.
   - Aplicación automática de los ajustes al detectar el lanzamiento del juego.
 
 ---
 
-## 📌 Fase 5: Optimización de Red y Audio
+## 📌 Fase 7: Optimización de Red y Audio
 - [ ] **Estabilizador de Ping (Wi-Fi Low Latency Lock):**
   - Adquisición de `WifiManager.WIFI_MODE_FULL_LOW_LATENCY` en Android 10+ para reducir jitter.
 - [ ] **Ecualizador y Potenciador de Pasos:**
@@ -79,7 +94,7 @@ Este documento define la evolución técnica y de producto para el **Game Booste
 
 ---
 
-## 📌 Fase 6: Distribución y Seguridad
+## 📌 Fase 8: Distribución y Seguridad
 - [ ] Empaquetado APK optimizado para tiendas de terceros (Uptodown, APKPure, GitHub Releases).
 - [ ] Verificación de compatibilidad con Android 15 y nuevas políticas de Foreground Service.
 - [ ] Mantenimiento estricto de la política de cero alteración de `persist.sys.*`.

@@ -3,6 +3,8 @@ package com.example
 import com.example.data.GameItem
 import com.example.data.InstalledApp
 import com.example.shizuku.GameRenderState
+import com.example.shizuku.GraphicsDriver
+import com.example.shizuku.GraphicsDriverState
 import com.example.viewmodel.BoosterUiState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,7 +12,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pruebas unitarias de estados de renderizado, biblioteca y configuración gráfica.
+ * Pruebas unitarias de estados de renderizado, controladores gráficos (OpenGL/Vulkan/ANGLE) y biblioteca.
  */
 class ExampleUnitTest {
     @Test
@@ -34,6 +36,36 @@ class ExampleUnitTest {
         assertTrue(activeState.isDownscaleActive)
         assertTrue(activeState.isMsaaDisabled)
         assertEquals("Render scale activo: 70%", activeState.statusMessage)
+    }
+
+    @Test
+    fun graphicsDriverEnum_fromIdMapping() {
+        assertEquals(GraphicsDriver.OPENGL, GraphicsDriver.fromId("opengl"))
+        assertEquals(GraphicsDriver.VULKAN, GraphicsDriver.fromId("vulkan"))
+        assertEquals(GraphicsDriver.ANGLE, GraphicsDriver.fromId("angle"))
+        assertEquals(GraphicsDriver.DEFAULT, GraphicsDriver.fromId("default"))
+        assertEquals(GraphicsDriver.DEFAULT, GraphicsDriver.fromId("unknown_driver"))
+    }
+
+    @Test
+    fun graphicsDriverState_defaultsAndCustomState() {
+        val defaultState = GraphicsDriverState()
+        assertEquals(GraphicsDriver.DEFAULT, defaultState.detectedDefaultDriver)
+        assertEquals(GraphicsDriver.DEFAULT, defaultState.currentActiveDriver)
+        assertFalse(defaultState.isCustomDriverActive)
+        assertFalse(defaultState.isOperating)
+
+        val vulkanState = GraphicsDriverState(
+            detectedDefaultDriver = GraphicsDriver.OPENGL,
+            currentActiveDriver = GraphicsDriver.VULKAN,
+            isCustomDriverActive = true,
+            gpuName = "Adreno (TM) 650",
+            statusMessage = "Controlador activo: Vulkan"
+        )
+        assertEquals(GraphicsDriver.OPENGL, vulkanState.detectedDefaultDriver)
+        assertEquals(GraphicsDriver.VULKAN, vulkanState.currentActiveDriver)
+        assertTrue(vulkanState.isCustomDriverActive)
+        assertEquals("Adreno (TM) 650", vulkanState.gpuName)
     }
 
     @Test
